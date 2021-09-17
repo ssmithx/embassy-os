@@ -9,6 +9,7 @@ use super::PKG_DOCKER_DIR;
 use crate::context::RpcContext;
 use crate::db::model::{InstalledPackageDataEntry, PackageDataEntry};
 use crate::s9pk::manifest::PackageId;
+use crate::status::MainStatus;
 use crate::util::Version;
 use crate::Error;
 
@@ -43,7 +44,7 @@ pub async fn update_dependents<'a, Db: DbHandle, I: IntoIterator<Item = &'a Pack
             .satisfied(ctx, db, id, None, dep, &man.version, &man.volumes)
             .await?
         {
-            let mut errs = crate::db::DatabaseModel::new()
+            let mut status = crate::db::DatabaseModel::new()
                 .package_data()
                 .idx_model(&dep)
                 .expect(db)
@@ -52,11 +53,18 @@ pub async fn update_dependents<'a, Db: DbHandle, I: IntoIterator<Item = &'a Pack
                 .expect(db)
                 .await?
                 .status()
-                .dependency_errors()
                 .get_mut(db)
                 .await?;
-            errs.0.insert(id.clone(), e);
-            errs.save(db).await?;
+            if status.dependency_errors.0.insert(id.clone(), e).is_none() {
+                // in here we know that there is a new dependency error where there wasn't one before
+                match status.main {
+                    MainStatus::Stopped => {
+                        status.main = MainStatus::Stopping;
+                    }
+                    _ => {}
+                }
+            }
+            status.save(db).await?;
         } else {
             let mut errs = crate::db::DatabaseModel::new()
                 .package_data()
