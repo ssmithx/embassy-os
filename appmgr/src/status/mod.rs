@@ -22,13 +22,29 @@ pub mod health_check;
 
 // Assume docker for now
 pub async fn synchronize_all(ctx: &RpcContext) -> Result<(), Error> {
+    println!("Status Daemon Loop Begin");
     let mut pkg_ids = crate::db::DatabaseModel::new()
         .package_data()
         .keys(&mut ctx.db.handle(), false)
         .await?;
+    // TODO: parallelize this
     for id in pkg_ids {
+        println!("Status synchronization: {}", id);
         async fn status(ctx: &RpcContext, id: PackageId) -> Result<(), Error> {
             let mut db = ctx.db.handle();
+            // TODO: DRAGONS!!
+            // this locks all of package data to solve a deadlock issue below. As of the writing of this comment, it
+            // hangs after the '2' trace, never yielding the '3' trace. The offending code is likely the 'check' on the
+            // idx model (which is a locking call) and there is another daemon loop somewhere that is likely iterating
+            // through packages in a different order.
+            log::trace!("1");
+            crate::db::DatabaseModel::new()
+                .package_data()
+                .lock(&mut db, LockType::Write)
+                .await;
+            log::trace!("2");
+
+            // Without the above lock, the below check operation will deadlock
             let model = crate::db::DatabaseModel::new()
                 .package_data()
                 .idx_model(&id)
@@ -40,33 +56,51 @@ pub async fn synchronize_all(ctx: &RpcContext) -> Result<(), Error> {
                         crate::ErrorKind::Database,
                     )
                 })?;
+            log::trace!("3");
             model.lock(&mut db, LockType::Write).await;
+            log::trace!("4");
             let (mut status, manager) =
                 if let Some(installed) = model.installed().check(&mut db).await? {
+                    log::trace!("5");
                     (
-                        installed.clone().status().get_mut(&mut db).await?,
-                        ctx.managers
-                            .get(&(
-                                id,
-                                installed
-                                    .manifest()
-                                    .version()
-                                    .get(&mut db, true)
-                                    .await?
-                                    .to_owned(),
-                            ))
-                            .await
-                            .ok_or_else(|| {
-                                Error::new(anyhow!("No Manager"), crate::ErrorKind::Docker)
-                            })?,
+                        {
+                            log::trace!("6");
+                            let y = installed.clone().status().get_mut(&mut db).await?;
+                            log::trace!("7");
+                            y
+                        },
+                        {
+                            log::trace!("8");
+                            let y = ctx
+                                .managers
+                                .get(&(
+                                    id,
+                                    installed
+                                        .manifest()
+                                        .version()
+                                        .get(&mut db, true)
+                                        .await?
+                                        .to_owned(),
+                                ))
+                                .await
+                                .ok_or_else(|| {
+                                    Error::new(anyhow!("No Manager"), crate::ErrorKind::Docker)
+                                })?;
+                            log::trace!("9");
+                            y
+                        },
                     )
                 } else {
+                    log::trace!("10");
                     return Ok(());
                 };
 
+            log::trace!("11");
             let res = status.main.synchronize(&manager).await?;
+            log::trace!("12");
 
             status.save(&mut db).await?;
+            log::trace!("13");
 
             Ok(res)
         }
