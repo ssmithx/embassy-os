@@ -56,21 +56,15 @@ pub async fn synchronize_all(ctx: &RpcContext) -> Result<(), Error> {
                         crate::ErrorKind::Database,
                     )
                 })?;
-            log::trace!("3");
             model.lock(&mut db, LockType::Write).await;
-            log::trace!("4");
             let (mut status, manager) =
                 if let Some(installed) = model.installed().check(&mut db).await? {
-                    log::trace!("5");
                     (
                         {
-                            log::trace!("6");
                             let y = installed.clone().status().get_mut(&mut db).await?;
-                            log::trace!("7");
                             y
                         },
                         {
-                            log::trace!("8");
                             let y = ctx
                                 .managers
                                 .get(&(
@@ -86,21 +80,16 @@ pub async fn synchronize_all(ctx: &RpcContext) -> Result<(), Error> {
                                 .ok_or_else(|| {
                                     Error::new(anyhow!("No Manager"), crate::ErrorKind::Docker)
                                 })?;
-                            log::trace!("9");
                             y
                         },
                     )
                 } else {
-                    log::trace!("10");
                     return Ok(());
                 };
 
-            log::trace!("11");
             let res = status.main.synchronize(&manager).await?;
-            log::trace!("12");
 
             status.save(&mut db).await?;
-            log::trace!("13");
 
             Ok(())
         }
