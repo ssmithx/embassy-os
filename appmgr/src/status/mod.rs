@@ -102,7 +102,7 @@ pub async fn synchronize_all(ctx: &RpcContext) -> Result<(), Error> {
             status.save(&mut db).await?;
             log::trace!("13");
 
-            Ok(res)
+            Ok(())
         }
         if let Err(e) = status(ctx, id.clone()).await {
             log::error!("Error syncronizing status of {}: {}", id, e);
@@ -274,40 +274,45 @@ pub enum MainStatus {
     },
 }
 impl MainStatus {
-    pub async fn synchronize(&mut self, manager: &Manager) -> Result<(), Error> {
-        match manager.status() {
+    pub async fn synchronize(&mut self, manager: &Manager) -> Result<bool, Error> {
+        Ok(match manager.status() {
             ManagerStatus::Stopped => match self {
-                MainStatus::Stopped => (),
+                MainStatus::Stopped => false,
                 MainStatus::Stopping => {
                     *self = MainStatus::Stopped;
+                    false
                 }
                 MainStatus::Running { started, .. } => {
                     *started = Utc::now();
                     manager.start().await?;
+                    true
                 }
-                MainStatus::BackingUp { .. } => (),
-                MainStatus::Restoring { .. } => (),
+                MainStatus::BackingUp { .. } => false,
+                MainStatus::Restoring { .. } => false,
             },
             ManagerStatus::Running => match self {
                 MainStatus::Stopped | MainStatus::Stopping | MainStatus::Restoring { .. } => {
                     manager.stop().await?;
+                    true
                 }
-                MainStatus::Running { .. } => (),
+                MainStatus::Running { .. } => false,
                 MainStatus::BackingUp { .. } => {
                     manager.pause().await?;
+                    true
                 }
             },
             ManagerStatus::Paused => match self {
                 MainStatus::Stopped | MainStatus::Stopping | MainStatus::Restoring { .. } => {
                     manager.stop().await?;
+                    true
                 }
                 MainStatus::Running { .. } => {
                     manager.resume().await?;
+                    true
                 }
-                MainStatus::BackingUp { .. } => (),
+                MainStatus::BackingUp { .. } => false,
             },
-        }
-        Ok(())
+        })
     }
     pub async fn check(&mut self, ctx: &RpcContext, manifest: &Manifest) -> Result<(), Error> {
         match self {
