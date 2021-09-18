@@ -57,6 +57,7 @@ pub async fn update_dependents<'a, Db: DbHandle, I: IntoIterator<Item = &'a Pack
                 .await?;
             if status.dependency_errors.0.insert(id.clone(), e).is_none() {
                 // in here we know that there is a new dependency error where there wasn't one before
+                log::info!("New Dependency Error for {}", id);
                 match status.main {
                     MainStatus::Stopped => {
                         status.main = MainStatus::Stopping;
@@ -66,6 +67,7 @@ pub async fn update_dependents<'a, Db: DbHandle, I: IntoIterator<Item = &'a Pack
             }
             status.save(db).await?;
         } else {
+            log::info!("Dependency on {} Satisfied for {}", dep, id);
             let mut errs = crate::db::DatabaseModel::new()
                 .package_data()
                 .idx_model(&dep)

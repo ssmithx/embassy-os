@@ -91,6 +91,7 @@ pub async fn synchronize_all(ctx: &RpcContext) -> Result<(), Error> {
 
             let res = status.main.synchronize(&manager).await?;
             if res {
+                log::info!("Control Action Taken");
                 update_dependents(ctx, &mut db, &id, &dependents).await?;
             }
 
