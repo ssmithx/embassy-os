@@ -12,6 +12,7 @@ use self::health_check::{HealthCheckId, HealthCheckResult};
 use crate::context::RpcContext;
 use crate::db::model::CurrentDependencyInfo;
 use crate::dependencies::DependencyError;
+use crate::install::cleanup::update_dependents;
 use crate::manager::{Manager, Status as ManagerStatus};
 use crate::notifications::{notify, NotificationLevel, NotificationSubtype};
 use crate::s9pk::manifest::{Manifest, PackageId};
@@ -57,37 +58,41 @@ pub async fn synchronize_all(ctx: &RpcContext) -> Result<(), Error> {
                     )
                 })?;
             model.lock(&mut db, LockType::Write).await;
-            let (mut status, manager) =
-                if let Some(installed) = model.installed().check(&mut db).await? {
-                    (
-                        {
-                            let y = installed.clone().status().get_mut(&mut db).await?;
-                            y
-                        },
-                        {
-                            let y = ctx
-                                .managers
-                                .get(&(
-                                    id,
-                                    installed
-                                        .manifest()
-                                        .version()
-                                        .get(&mut db, true)
-                                        .await?
-                                        .to_owned(),
-                                ))
-                                .await
-                                .ok_or_else(|| {
-                                    Error::new(anyhow!("No Manager"), crate::ErrorKind::Docker)
-                                })?;
-                            y
-                        },
-                    )
-                } else {
-                    return Ok(());
-                };
+            let (mut status, manager, dependents) = if let Some(installed) =
+                model.installed().check(&mut db).await?
+            {
+                let status = installed.clone().status().get_mut(&mut db).await?;
+                let manager = ctx
+                    .managers
+                    .get(&(
+                        id.clone(),
+                        installed
+                            .clone()
+                            .manifest()
+                            .version()
+                            .get(&mut db, true)
+                            .await?
+                            .to_owned(),
+                    ))
+                    .await
+                    .ok_or_else(|| Error::new(anyhow!("No Manager"), crate::ErrorKind::Docker))?;
+                let dependents = installed
+                    .current_dependents()
+                    .get(&mut db, true)
+                    .await?
+                    .to_owned()
+                    .into_iter()
+                    .map(|x| x.0)
+                    .collect::<HashSet<PackageId>>();
+                (status, manager, dependents)
+            } else {
+                return Ok(());
+            };
 
             let res = status.main.synchronize(&manager).await?;
+            if res {
+                update_dependents(ctx, &mut db, &id, &dependents).await?;
+            }
 
             status.save(&mut db).await?;
 
