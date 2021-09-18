@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use anyhow::anyhow;
 use chrono::Utc;
 use indexmap::IndexMap;
@@ -6,6 +8,7 @@ use rpc_toolkit::command;
 
 use crate::context::RpcContext;
 use crate::db::util::WithRevision;
+use crate::install::cleanup::update_dependents;
 use crate::s9pk::manifest::PackageId;
 use crate::status::MainStatus;
 use crate::util::display_none;
@@ -37,19 +40,34 @@ pub async fn start(
         .get(&mut tx, true)
         .await?
         .to_owned();
-    let mut status = installed.status().main().get_mut(&mut tx).await?;
+    let mut status = installed.clone().status().main().get_mut(&mut tx).await?;
 
     *status = MainStatus::Running {
         started: Utc::now(),
         health: IndexMap::new(),
     };
-    status
+    if status
         .synchronize(
-            &*ctx.managers.get(&(id, version)).await.ok_or_else(|| {
-                Error::new(anyhow!("Manager not found"), crate::ErrorKind::Docker)
-            })?,
+            &*ctx
+                .managers
+                .get(&(id.clone(), version))
+                .await
+                .ok_or_else(|| {
+                    Error::new(anyhow!("Manager not found"), crate::ErrorKind::Docker)
+                })?,
         )
-        .await?;
+        .await?
+    {
+        let deps = installed
+            .current_dependents()
+            .get(&mut tx, true)
+            .await?
+            .to_owned()
+            .into_iter()
+            .map(|x| x.0)
+            .collect::<HashSet<PackageId>>();
+        update_dependents(&ctx, &mut tx, &id, &deps).await?;
+    }
     status.save(&mut tx).await?;
 
     Ok(WithRevision {
