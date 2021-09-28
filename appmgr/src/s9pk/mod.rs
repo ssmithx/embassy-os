@@ -22,7 +22,7 @@ pub const SIG_CONTEXT: &'static [u8] = b"s9pk";
 pub fn pack(#[context] ctx: CliContext, #[arg] path: Option<PathBuf>) -> Result<(), Error> {
     use std::fs::File;
     use std::io::Read;
-
+    println!("packing");
     let path = if let Some(path) = path {
         path
     } else {
@@ -52,6 +52,7 @@ pub fn pack(#[context] ctx: CliContext, #[arg] path: Option<PathBuf>) -> Result<
         .writer(&mut outfile)
         .license(
             File::open(path.join(manifest.assets.license_path())).with_ctx(|_| {
+                println!("packing license");
                 (
                     crate::ErrorKind::Filesystem,
                     manifest.assets.license_path().display().to_string(),
@@ -60,6 +61,7 @@ pub fn pack(#[context] ctx: CliContext, #[arg] path: Option<PathBuf>) -> Result<
         )
         .icon(
             File::open(path.join(manifest.assets.icon_path())).with_ctx(|_| {
+                println!("packing icon");
                 (
                     crate::ErrorKind::Filesystem,
                     manifest.assets.icon_path().display().to_string(),
@@ -68,6 +70,7 @@ pub fn pack(#[context] ctx: CliContext, #[arg] path: Option<PathBuf>) -> Result<
         )
         .instructions(
             File::open(path.join(manifest.assets.instructions_path())).with_ctx(|_| {
+                println!("packing instructions");
                 (
                     crate::ErrorKind::Filesystem,
                     manifest.assets.instructions_path().display().to_string(),
@@ -76,6 +79,7 @@ pub fn pack(#[context] ctx: CliContext, #[arg] path: Option<PathBuf>) -> Result<
         )
         .docker_images(
             File::open(path.join(manifest.assets.docker_images_path())).with_ctx(|_| {
+                println!("packing docker images");
                 (
                     crate::ErrorKind::Filesystem,
                     manifest.assets.docker_images_path().display().to_string(),
@@ -83,6 +87,7 @@ pub fn pack(#[context] ctx: CliContext, #[arg] path: Option<PathBuf>) -> Result<
             })?,
         )
         .assets({
+            // println!("packing assets from path {}",);
             let mut assets = tar::Builder::new(Vec::new()); // TODO: Ideally stream this? best not to buffer in memory
 
             for (asset_volume, _) in manifest
@@ -90,6 +95,11 @@ pub fn pack(#[context] ctx: CliContext, #[arg] path: Option<PathBuf>) -> Result<
                 .iter()
                 .filter(|(_, v)| matches!(v, &&Volume::Assets {}))
             {
+                println!(
+                    "appending asset volume {:?} path {:?}",
+                    &asset_volume,
+                    &path.join(manifest.assets.assets_path()).join(asset_volume)
+                );
                 assets.append_dir_all(
                     asset_volume,
                     path.join(manifest.assets.assets_path()).join(asset_volume),
@@ -100,6 +110,7 @@ pub fn pack(#[context] ctx: CliContext, #[arg] path: Option<PathBuf>) -> Result<
         })
         .build()
         .pack(&ctx.developer_key()?)?;
+    println!("syncing all");
     outfile.sync_all()?;
 
     Ok(())

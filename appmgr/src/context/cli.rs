@@ -124,6 +124,10 @@ impl CliContext {
     }
     /// BLOCKING
     pub fn developer_key(&self) -> Result<ed25519_dalek::Keypair, Error> {
+        println!(
+            "fetching developer key from {}",
+            &self.developer_key_path.display()
+        );
         if !self.developer_key_path.exists() {
             return Err(Error::new(anyhow!("Developer Key does not exist! Please run `embassy-sdk init` before running this command."), crate::ErrorKind::Uninitialized));
         }
