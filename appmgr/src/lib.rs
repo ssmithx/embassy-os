@@ -84,6 +84,7 @@ pub fn server() -> Result<(), RpcError> {
     action::action,
     install::install,
     install::uninstall,
+    dependencies::dependency,
     config::config,
     control::start,
     control::stop,

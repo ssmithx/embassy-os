@@ -303,3 +303,18 @@ pub async fn update_current_dependents<
     }
     Ok(())
 }
+
+#[command(subcommands(config,))]
+pub fn dependency() -> Result<(), RpcError> {
+    Ok(())
+}
+
+#[command(subcommands(dry,))]
+pub fn config() -> Result<(), RpcError> {
+    Ok(())
+}
+
+#[command()]
+pub fn dry() -> Result<(), RpcError> {
+    Ok(())
+}
