@@ -7,4 +7,6 @@ fi
 
 echo -n ./ENVIRONMENT.txt
 
-#comment
+#commentomm
+
+#another 
