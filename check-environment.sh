@@ -6,7 +6,3 @@ if ! [ -f ./ENVIRONMENT.txt ] || [ "$(cat ./ENVIRONMENT.txt)" != "$ENVIRONMENT" 
 fi
 
 echo -n ./ENVIRONMENT.txt
-
-#commentomm
-
-#another 
